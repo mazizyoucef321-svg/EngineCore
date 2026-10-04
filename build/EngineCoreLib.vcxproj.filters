@@ -1,0 +1,34 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="18.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <ClCompile Include="C:\Users\Anotech\Desktop\THE SYSTEM\src\core\thread_steering.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\Users\Anotech\Desktop\THE SYSTEM\src\core\dpc_steering_engine.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\Users\Anotech\Desktop\THE SYSTEM\src\core\engine_orchestrator.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\Users\Anotech\Desktop\THE SYSTEM\src\core\security_manager.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\Users\Anotech\Desktop\THE SYSTEM\src\shader\vault_purging.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\Users\Anotech\Desktop\THE SYSTEM\src\telemetry\vram_monitor.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\Users\Anotech\Desktop\THE SYSTEM\src\network\pso_cloud_network.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <CustomBuild Include="C:\Users\Anotech\Desktop\THE SYSTEM\CMakeLists.txt" />
+  </ItemGroup>
+  <ItemGroup>
+    <Filter Include="Source Files">
+      <UniqueIdentifier>{D5A1A022-ACC4-357D-AD6B-77E57FFA4AD1}</UniqueIdentifier>
+    </Filter>
+  </ItemGroup>
+</Project>
