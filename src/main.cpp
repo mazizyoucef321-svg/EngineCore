@@ -68,6 +68,7 @@
 #include "telemetry/vram_monitor.hpp"
 #include "telemetry/PresentMon_hooks.hpp"
 
+#include <algorithm>
 #include <array>
 #include <atomic>
 #include <cmath>
@@ -93,6 +94,11 @@ namespace {
 constexpr UINT kFrameCount = 3;
 
 ID3D12DescriptorHeap* g_imguiSrvHeap = nullptr;
+
+float  g_dpiScale = 1.0f;                           // set once in wWinMain (system DPI / 96)
+ImVec4 g_accent(0.03f, 0.57f, 0.70f, 1.0f);         // brand accent, set by ApplyEngineCoreTheme
+std::atomic<bool> g_resizePending{false};           // WM_SIZE -> main loop (swap chain resize)
+std::atomic<UINT> g_resizeW{0}, g_resizeH{0};
 
 void FatalIfFailed(HRESULT hr, const char* what) {
     if (FAILED(hr)) {
@@ -131,6 +137,17 @@ public:
         return out;
     }
     [[nodiscard]] std::size_t Count() const noexcept { return count_; }
+    [[nodiscard]] float Max() const noexcept {
+        float m = 0.0f;
+        for (std::size_t i = 0; i < count_; ++i) m = std::max(m, data_[i]);
+        return m;
+    }
+    [[nodiscard]] float Avg() const noexcept {
+        if (count_ == 0) return 0.0f;
+        float sum = 0.0f;
+        for (std::size_t i = 0; i < count_; ++i) sum += data_[i];
+        return sum / static_cast<float>(count_);
+    }
 
 private:
     std::array<float, N> data_{};
@@ -265,94 +282,129 @@ private:
 
 constexpr std::uint64_t kDemoStaleFrames = 1;
 
-void ApplyEngineCoreTheme() {
+bool ReadWindowsDarkMode(bool& darkMode) {
+    DWORD appsUseLightTheme = 1;
+    DWORD valueSize = sizeof(appsUseLightTheme);
+    const LSTATUS status = RegGetValueW(
+        HKEY_CURRENT_USER,
+        L"Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize",
+        L"AppsUseLightTheme",
+        RRF_RT_REG_DWORD,
+        nullptr,
+        &appsUseLightTheme,
+        &valueSize);
+    if (status != ERROR_SUCCESS)
+        return false;
+
+    darkMode = appsUseLightTheme == 0;
+    return true;
+}
+
+void ApplyEngineCoreTheme(bool darkMode) {
     ImGuiStyle& style = ImGui::GetStyle();
+    const float sc = g_dpiScale;
     style.WindowRounding = 0.0f;
-    style.FrameRounding = 12.0f;
-    style.GrabRounding = 12.0f;
-    style.ChildRounding = 10.0f;
-    style.PopupRounding = 10.0f;
-    style.ScrollbarRounding = 10.0f;
+    style.FrameRounding = 10.0f * sc;
+    style.GrabRounding = 10.0f * sc;
+    style.ChildRounding = 10.0f * sc;
+    style.PopupRounding = 10.0f * sc;
+    style.ScrollbarRounding = 10.0f * sc;
     style.WindowBorderSize = 0.0f;
     style.FrameBorderSize = 1.0f;
-    style.ItemSpacing = ImVec2(10.0f, 10.0f);
-    style.WindowPadding = ImVec2(18.0f, 18.0f);
+    style.ItemSpacing = ImVec2(10.0f * sc, 10.0f * sc);
+    style.FramePadding = ImVec2(10.0f * sc, 6.0f * sc);
+    style.CellPadding = ImVec2(8.0f * sc, 6.0f * sc);
+    style.WindowPadding = ImVec2(20.0f * sc, 18.0f * sc);
+    // Brand accent (matches the EngineCore logo's cyan).
+    g_accent = darkMode ? ImVec4(0.13f, 0.83f, 0.93f, 1.00f) : ImVec4(0.03f, 0.57f, 0.70f, 1.00f);
 
     ImVec4* c = style.Colors;
-    const ImVec4 paper{0.97f, 0.97f, 0.98f, 1.00f};
-    const ImVec4 paperChild{0.93f, 0.93f, 0.94f, 1.00f};
-    const ImVec4 ink{0.07f, 0.07f, 0.08f, 1.00f};
-    const ImVec4 inkFaint{0.45f, 0.45f, 0.47f, 1.00f};
-    const ImVec4 border{0.55f, 0.55f, 0.58f, 0.70f};
+    const ImVec4 paper = darkMode ? ImVec4(0.00f, 0.00f, 0.00f, 1.00f)
+                                  : ImVec4(1.00f, 1.00f, 1.00f, 1.00f);
+    const ImVec4 paperChild = darkMode ? ImVec4(0.07f, 0.07f, 0.08f, 1.00f)
+                                       : ImVec4(0.93f, 0.93f, 0.94f, 1.00f);
+    const ImVec4 ink = darkMode ? ImVec4(0.94f, 0.94f, 0.95f, 1.00f)
+                                : ImVec4(0.07f, 0.07f, 0.08f, 1.00f);
+    const ImVec4 inkFaint = darkMode ? ImVec4(0.62f, 0.62f, 0.65f, 1.00f)
+                                     : ImVec4(0.45f, 0.45f, 0.47f, 1.00f);
+    const ImVec4 border = darkMode ? ImVec4(0.38f, 0.38f, 0.42f, 0.75f)
+                                   : ImVec4(0.55f, 0.55f, 0.58f, 0.70f);
+    const ImVec4 shade = darkMode ? ImVec4(1.00f, 1.00f, 1.00f, 1.00f)
+                                  : ImVec4(0.00f, 0.00f, 0.00f, 1.00f);
 
     c[ImGuiCol_Text]                 = ink;
     c[ImGuiCol_TextDisabled]         = inkFaint;
     c[ImGuiCol_WindowBg]             = paper;
     c[ImGuiCol_ChildBg]              = paperChild;
-    c[ImGuiCol_PopupBg]              = ImVec4(0.99f, 0.99f, 1.00f, 0.98f);
+    c[ImGuiCol_PopupBg]              = darkMode ? ImVec4(0.08f, 0.08f, 0.09f, 0.98f)
+                                                  : ImVec4(0.99f, 0.99f, 1.00f, 0.98f);
     c[ImGuiCol_Border]               = border;
     c[ImGuiCol_BorderShadow]         = ImVec4(0, 0, 0, 0);
-    c[ImGuiCol_FrameBg]              = ImVec4(0.00f, 0.00f, 0.00f, 0.045f);
-    c[ImGuiCol_FrameBgHovered]       = ImVec4(0.00f, 0.00f, 0.00f, 0.085f);
-    c[ImGuiCol_FrameBgActive]        = ImVec4(0.00f, 0.00f, 0.00f, 0.12f);
+    c[ImGuiCol_FrameBg]              = ImVec4(shade.x, shade.y, shade.z, 0.055f);
+    c[ImGuiCol_FrameBgHovered]       = ImVec4(shade.x, shade.y, shade.z, 0.10f);
+    c[ImGuiCol_FrameBgActive]        = ImVec4(shade.x, shade.y, shade.z, 0.16f);
     c[ImGuiCol_TitleBg]              = paper;
     c[ImGuiCol_TitleBgActive]        = paper;
     c[ImGuiCol_MenuBarBg]            = paper;
     c[ImGuiCol_ScrollbarBg]          = paper;
-    c[ImGuiCol_ScrollbarGrab]        = ImVec4(0, 0, 0, 0.15f);
-    c[ImGuiCol_ScrollbarGrabHovered] = ImVec4(0, 0, 0, 0.25f);
-    c[ImGuiCol_ScrollbarGrabActive]  = ImVec4(0, 0, 0, 0.35f);
-    c[ImGuiCol_CheckMark]            = ink;
-    c[ImGuiCol_SliderGrab]           = ImVec4(0, 0, 0, 0.5f);
+    c[ImGuiCol_ScrollbarGrab]        = ImVec4(shade.x, shade.y, shade.z, 0.15f);
+    c[ImGuiCol_ScrollbarGrabHovered] = ImVec4(shade.x, shade.y, shade.z, 0.25f);
+    c[ImGuiCol_ScrollbarGrabActive]  = ImVec4(shade.x, shade.y, shade.z, 0.35f);
+    c[ImGuiCol_CheckMark]            = g_accent;
+    c[ImGuiCol_SliderGrab]           = ImVec4(shade.x, shade.y, shade.z, 0.5f);
     c[ImGuiCol_SliderGrabActive]     = ink;
-    c[ImGuiCol_Button]               = ImVec4(0, 0, 0, 0.05f);
-    c[ImGuiCol_ButtonHovered]        = ImVec4(0, 0, 0, 0.10f);
-    c[ImGuiCol_ButtonActive]         = ImVec4(0, 0, 0, 0.16f);
-    c[ImGuiCol_Header]               = ImVec4(0, 0, 0, 0.06f);
-    c[ImGuiCol_HeaderHovered]        = ImVec4(0, 0, 0, 0.11f);
-    c[ImGuiCol_HeaderActive]         = ImVec4(0, 0, 0, 0.16f);
+    c[ImGuiCol_Button]               = ImVec4(shade.x, shade.y, shade.z, 0.05f);
+    c[ImGuiCol_ButtonHovered]        = ImVec4(shade.x, shade.y, shade.z, 0.10f);
+    c[ImGuiCol_ButtonActive]         = ImVec4(shade.x, shade.y, shade.z, 0.16f);
+    c[ImGuiCol_Header]               = ImVec4(shade.x, shade.y, shade.z, 0.06f);
+    c[ImGuiCol_HeaderHovered]        = ImVec4(shade.x, shade.y, shade.z, 0.11f);
+    c[ImGuiCol_HeaderActive]         = ImVec4(shade.x, shade.y, shade.z, 0.16f);
     c[ImGuiCol_Separator]            = border;
-    c[ImGuiCol_PlotLines]            = ImVec4(0.10f, 0.10f, 0.11f, 1.00f);
-    c[ImGuiCol_PlotLinesHovered]     = ImVec4(0.00f, 0.00f, 0.00f, 0.85f);
-    c[ImGuiCol_PlotHistogram]        = ImVec4(0.10f, 0.10f, 0.11f, 1.00f);
-    c[ImGuiCol_PlotHistogramHovered] = ImVec4(0.00f, 0.00f, 0.00f, 0.85f);
+    c[ImGuiCol_PlotLines]            = g_accent;
+    c[ImGuiCol_PlotLinesHovered]     = ImVec4(g_accent.x, g_accent.y, g_accent.z, 0.85f);
+    c[ImGuiCol_PlotHistogram]        = g_accent;
+    c[ImGuiCol_PlotHistogramHovered] = ImVec4(g_accent.x, g_accent.y, g_accent.z, 0.85f);
 }
 
-void DrawRgbFogHeaderBar(float width, float height) {
-    const auto t = static_cast<float>(ImGui::GetTime());
+// Ambient RGB header. Cost: 33 HSV conversions + 64 gradient quads + 24 soft circles
+// per frame (the first version did ~480 conversions and 240 quads). `t` is supplied
+// by the caller so the animation can be frozen while the window is in the background.
+void DrawRgbFogHeaderBar(float width, float height, float t, const char* title, const char* subtitle) {
     ImDrawList* dl = ImGui::GetWindowDrawList();
     const ImVec2 p0 = ImGui::GetCursorScreenPos();
     const ImVec2 p1(p0.x + width, p0.y + height);
 
     dl->PushClipRect(p0, p1, true);
 
-    constexpr int kSegments = 48;
-    constexpr int kFadeRows = 5;
-    const float segW = width / static_cast<float>(kSegments);
+    constexpr int kSegments = 32;
     constexpr float kHueSpeed = 0.05f;
+    const float segW = width / static_cast<float>(kSegments);
 
-    for (int row = 0; row < kFadeRows; ++row) {
-        const float rowT0 = static_cast<float>(row) / static_cast<float>(kFadeRows);
-        const float rowT1 = static_cast<float>(row + 1) / static_cast<float>(kFadeRows);
-        const float y0 = p0.y + height * rowT0;
-        const float y1 = p0.y + height * rowT1;
-        const float rowAlpha = 0.30f * (1.0f - rowT0) * (1.0f - rowT0);
+    std::array<ImVec4, kSegments + 1> cols{};
+    for (int i = 0; i <= kSegments; ++i) {
+        const float u = static_cast<float>(i) / static_cast<float>(kSegments);
+        const float drift = 0.05f * std::sin(t * 0.6f + u * 6.2831853f);
+        const float hue = std::fmod(t * kHueSpeed + u + drift + 1.0f, 1.0f);
+        float r, g, b;
+        ImGui::ColorConvertHSVtoRGB(hue, 0.90f, 1.0f, r, g, b);
+        cols[static_cast<std::size_t>(i)] = ImVec4(r, g, b, 1.0f);
+    }
 
+    // Two stacked rows, each a true vertical gradient -> smooth fade, no banding.
+    constexpr float kAlphas[3] = {0.34f, 0.10f, 0.0f};
+    for (int row = 0; row < 2; ++row) {
+        const float y0 = p0.y + height * (row == 0 ? 0.0f : 0.5f);
+        const float y1 = p0.y + height * (row == 0 ? 0.5f : 1.0f);
+        const float aTop = kAlphas[row], aBot = kAlphas[row + 1];
         for (int i = 0; i < kSegments; ++i) {
-            const float u0 = static_cast<float>(i) / static_cast<float>(kSegments);
-            const float u1 = static_cast<float>(i + 1) / static_cast<float>(kSegments);
-            const float drift = 0.05f * std::sin(t * 0.6f + u0 * 6.2831853f);
-            const float hueA = std::fmod(t * kHueSpeed + u0 + drift + 1.0f, 1.0f);
-            const float hueB = std::fmod(t * kHueSpeed + u1 + drift + 1.0f, 1.0f);
-
-            float r, g, b;
-            ImGui::ColorConvertHSVtoRGB(hueA, 0.90f, 1.0f, r, g, b);
-            const ImU32 colA = ImGui::ColorConvertFloat4ToU32(ImVec4(r, g, b, rowAlpha));
-            ImGui::ColorConvertHSVtoRGB(hueB, 0.90f, 1.0f, r, g, b);
-            const ImU32 colB = ImGui::ColorConvertFloat4ToU32(ImVec4(r, g, b, rowAlpha));
-
-            dl->AddRectFilledMultiColor(ImVec2(p0.x + segW * i, y0), ImVec2(p0.x + segW * (i + 1), y1),
-                                        colA, colB, colB, colA);
+            const ImVec4& a = cols[static_cast<std::size_t>(i)];
+            const ImVec4& b = cols[static_cast<std::size_t>(i) + 1];
+            const ImU32 tl = ImGui::ColorConvertFloat4ToU32(ImVec4(a.x, a.y, a.z, aTop));
+            const ImU32 tr = ImGui::ColorConvertFloat4ToU32(ImVec4(b.x, b.y, b.z, aTop));
+            const ImU32 br = ImGui::ColorConvertFloat4ToU32(ImVec4(b.x, b.y, b.z, aBot));
+            const ImU32 bl = ImGui::ColorConvertFloat4ToU32(ImVec4(a.x, a.y, a.z, aBot));
+            dl->AddRectFilledMultiColor(ImVec2(p0.x + segW * static_cast<float>(i), y0),
+                                        ImVec2(p0.x + segW * static_cast<float>(i + 1), y1), tl, tr, br, bl);
         }
     }
 
@@ -364,20 +416,36 @@ void DrawRgbFogHeaderBar(float width, float height) {
         {0.81f, -0.07f, 0.65f, 60.0f, 0.90f},
     }};
     constexpr int kRings = 6;
-
     for (std::size_t i = 0; i < kPuffs.size(); ++i) {
         const Puff& puff = kPuffs[i];
         const float x = p0.x + width * std::fmod(t * puff.speed + puff.phase + 4.0f, 1.0f);
         const float y = p0.y + height * (0.5f + puff.ySpread * 0.5f * std::sin(t * 0.3f + static_cast<float>(i)));
         const float hue = std::fmod(t * kHueSpeed + puff.phase, 1.0f);
-
+        float r, g, b;
+        ImGui::ColorConvertHSVtoRGB(hue, puff.satur, 1.0f, r, g, b);
+        const float radius = puff.radius * g_dpiScale;
         for (int ring = kRings; ring >= 1; --ring) {
             const float ringT = static_cast<float>(ring) / static_cast<float>(kRings);
-            float r, g, b;
-            ImGui::ColorConvertHSVtoRGB(hue, puff.satur, 1.0f, r, g, b);
-            const float alpha = 0.09f * (1.0f - ringT);
-            dl->AddCircleFilled(ImVec2(x, y), puff.radius * ringT,
-                                ImGui::ColorConvertFloat4ToU32(ImVec4(r, g, b, alpha)), 32);
+            dl->AddCircleFilled(ImVec2(x, y), radius * ringT,
+                                ImGui::ColorConvertFloat4ToU32(ImVec4(r, g, b, 0.09f * (1.0f - ringT))), 24);
+        }
+    }
+
+    // Title text drawn over the fog (the fog is faint, so plain ink stays readable).
+    if (title) {
+        const ImGuiStyle& st = ImGui::GetStyle();
+        const float titleSize = ImGui::GetFontSize() * 1.6f;
+        const float padX = st.WindowPadding.x * 0.8f;
+        const ImU32 ink = ImGui::ColorConvertFloat4ToU32(st.Colors[ImGuiCol_Text]);
+        const ImU32 faint = ImGui::ColorConvertFloat4ToU32(st.Colors[ImGuiCol_TextDisabled]);
+        const ImVec2 titlePos(p0.x + padX, p0.y + (height - titleSize) * 0.5f);
+        dl->AddText(ImGui::GetFont(), titleSize, titlePos, ink, title);
+        if (subtitle) {
+            const float titleW = ImGui::GetFont()->CalcTextSizeA(titleSize, FLT_MAX, 0.0f, title).x;
+            dl->AddText(ImGui::GetFont(), ImGui::GetFontSize(),
+                        ImVec2(titlePos.x + titleW + 14.0f * g_dpiScale,
+                               p0.y + (height - ImGui::GetFontSize()) * 0.5f + 2.0f * g_dpiScale),
+                        faint, subtitle);
         }
     }
 
@@ -390,6 +458,7 @@ bool LiquidGlassButton(const char* label, const ImVec2& size, bool active = fals
     const ImVec2 pos = ImGui::GetCursorScreenPos();
     const ImVec2 realSize(size.x, size.y);
     const bool hovered = ImGui::IsMouseHoveringRect(pos, ImVec2(pos.x + realSize.x, pos.y + realSize.y));
+    const ImVec4 shade = ImGui::GetStyle().Colors[ImGuiCol_Text];
 
     if (hovered) {
         for (int i = 3; i >= 1; --i) {
@@ -397,17 +466,18 @@ bool LiquidGlassButton(const char* label, const ImVec2& size, bool active = fals
             const float alpha = 0.05f / static_cast<float>(i);
             dl->AddRectFilled(ImVec2(pos.x - expand, pos.y - expand),
                               ImVec2(pos.x + realSize.x + expand, pos.y + realSize.y + expand),
-                              ImGui::ColorConvertFloat4ToU32(ImVec4(0, 0, 0, alpha)),
+                              ImGui::ColorConvertFloat4ToU32(ImVec4(shade.x, shade.y, shade.z, alpha)),
                               16.0f);
         }
     }
 
     ImGui::PushStyleColor(ImGuiCol_Button,
-        active ? ImVec4(0, 0, 0, 0.14f) : ImVec4(0, 0, 0, 0.045f));
-    ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0, 0, 0, 0.09f));
-    ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(0, 0, 0, 0.16f));
+        ImVec4(shade.x, shade.y, shade.z, active ? 0.14f : 0.045f));
+    ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(shade.x, shade.y, shade.z, 0.09f));
+    ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(shade.x, shade.y, shade.z, 0.16f));
     ImGui::PushStyleColor(ImGuiCol_Border,
-        active ? ImVec4(0, 0, 0, 0.55f) : (hovered ? ImVec4(0, 0, 0, 0.40f) : ImVec4(0, 0, 0, 0.15f)));
+        active ? ImVec4(g_accent.x, g_accent.y, g_accent.z, 0.95f)
+               : ImVec4(shade.x, shade.y, shade.z, hovered ? 0.40f : 0.15f));
     ImGui::PushStyleVar(ImGuiStyleVar_FrameBorderSize, 1.5f);
 
     const bool clicked = ImGui::Button(label, realSize);
@@ -475,11 +545,50 @@ void StatusDot(const char* label, const ImVec4& color, float radius = 5.0f) {
     ImGui::TextUnformatted(label);
 }
 
+[[nodiscard]] float StatusDotWidth(const char* label, float radius = 5.0f) {
+    return radius * 2.0f + 6.0f + 4.0f + ImGui::CalcTextSize(label).x;
+}
+
+// Keeps the next item on the current line if it still fits in the window, otherwise
+// lets it wrap to the next line (so chip rows never overflow a narrow window).
+void SameLineWrap(float nextItemWidth, float spacing) {
+    const float right = ImGui::GetWindowPos().x + ImGui::GetWindowWidth() - ImGui::GetStyle().WindowPadding.x;
+    if (ImGui::GetItemRectMax().x + spacing + nextItemWidth <= right) ImGui::SameLine(0.0f, spacing);
+}
+
+[[nodiscard]] std::string WideToUtf8(const wchar_t* w) {
+    if (!w || !*w) return {};
+    const int n = WideCharToMultiByte(CP_UTF8, 0, w, -1, nullptr, 0, nullptr, nullptr);
+    if (n <= 1) return {};
+    std::string out(static_cast<std::size_t>(n - 1), '\0');
+    WideCharToMultiByte(CP_UTF8, 0, w, -1, out.data(), n, nullptr, nullptr);
+    return out;
+}
+
+// One telemetry plot: title, line plot filling the cell width, one-line footer.
+template <std::size_t N>
+void PlotCard(const char* title, const char* id, const RingBuffer<N>& rb, float yMin, float yMax,
+              const char* overlay, const char* footer, float height) {
+    ImGui::TextUnformatted(title);
+    const auto data = rb.Ordered();
+    ImGui::PlotLines(id, data.data(), static_cast<int>(rb.Count()), 0, overlay, yMin, yMax,
+                     ImVec2(ImGui::GetContentRegionAvail().x, height));
+    ImGui::TextDisabled("%s", footer);
+}
+
 std::atomic<bool> g_running{true};
+constexpr WORD kAppIconResourceId = 101;
 
 LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
     if (ImGui_ImplWin32_WndProcHandler(hwnd, msg, wParam, lParam)) return true;
     switch (msg) {
+        case WM_SIZE:
+            if (wParam != SIZE_MINIMIZED) {
+                g_resizeW.store(LOWORD(lParam), std::memory_order_relaxed);
+                g_resizeH.store(HIWORD(lParam), std::memory_order_relaxed);
+                g_resizePending.store(true, std::memory_order_release);
+            }
+            return 0;
         case WM_DESTROY:
             g_running.store(false, std::memory_order_relaxed);
             PostQuitMessage(0);
@@ -502,14 +611,44 @@ ComPtr<IDXGIAdapter1> PickHardwareAdapter(IDXGIFactory4* factory) {
     return nullptr;
 }
 
+// Enables/disables a privilege that is already present in this process's token.
+// Disabling always works; enabling only works if the token holds the privilege.
+bool SetPrivilegeEnabled(const wchar_t* name, bool enable) noexcept {
+    HANDLE token = nullptr;
+    if (!OpenProcessToken(GetCurrentProcess(), TOKEN_ADJUST_PRIVILEGES | TOKEN_QUERY, &token))
+        return false;
+    TOKEN_PRIVILEGES tp{};
+    tp.PrivilegeCount = 1;
+    if (!LookupPrivilegeValueW(nullptr, name, &tp.Privileges[0].Luid)) {
+        CloseHandle(token);
+        return false;
+    }
+    tp.Privileges[0].Attributes = enable ? SE_PRIVILEGE_ENABLED : 0;
+    AdjustTokenPrivileges(token, FALSE, &tp, sizeof(tp), nullptr, nullptr);
+    const bool ok = (GetLastError() == ERROR_SUCCESS); // ERROR_NOT_ALL_ASSIGNED => not held
+    CloseHandle(token);
+    return ok;
+}
+
 } // namespace
 
 int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, LPWSTR, int) {
+    // Per-monitor DPI awareness: without it Windows bitmap-stretches the whole
+    // window (the blurry text in the old build). Must run before any window exists.
+    SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
+    g_dpiScale = std::clamp(static_cast<float>(GetDpiForSystem()) / 96.0f, 1.0f, 3.0f);
+
     WNDCLASSEXW wc{};
     wc.cbSize = sizeof(wc);
     wc.style = CS_HREDRAW | CS_VREDRAW;
     wc.lpfnWndProc = WndProc;
     wc.hInstance = hInstance;
+    wc.hIcon = static_cast<HICON>(LoadImageW(
+        hInstance, MAKEINTRESOURCEW(kAppIconResourceId), IMAGE_ICON,
+        GetSystemMetrics(SM_CXICON), GetSystemMetrics(SM_CYICON), LR_DEFAULTCOLOR));
+    wc.hIconSm = static_cast<HICON>(LoadImageW(
+        hInstance, MAKEINTRESOURCEW(kAppIconResourceId), IMAGE_ICON,
+        GetSystemMetrics(SM_CXSMICON), GetSystemMetrics(SM_CYSMICON), LR_DEFAULTCOLOR));
     wc.hCursor = LoadCursorW(nullptr, IDC_ARROW);
     wc.hbrBackground = static_cast<HBRUSH>(GetStockObject(WHITE_BRUSH));
     wc.lpszClassName = L"EngineCoreWindowClass";
@@ -517,7 +656,8 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, LPWSTR, int) {
 
     const HWND hwnd = CreateWindowExW(
         0, wc.lpszClassName, L"EngineCore :: Telemetry Orchestrator",
-        WS_OVERLAPPEDWINDOW, CW_USEDEFAULT, CW_USEDEFAULT, 1440, 900,
+        WS_OVERLAPPEDWINDOW, CW_USEDEFAULT, CW_USEDEFAULT,
+        static_cast<int>(1280 * g_dpiScale), static_cast<int>(820 * g_dpiScale),
         nullptr, nullptr, hInstance, nullptr);
     ShowWindow(hwnd, SW_SHOWDEFAULT);
     UpdateWindow(hwnd);
@@ -650,8 +790,23 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, LPWSTR, int) {
     ImGui::CreateContext();
     ImGuiIO& io = ImGui::GetIO();
     io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
+    {
+        // Segoe UI instead of ImGui's built-in pixel font; falls back to the built-in one.
+        wchar_t winDir[MAX_PATH]{};
+        std::string fontPath;
+        if (GetWindowsDirectoryW(winDir, MAX_PATH) > 0) fontPath = WideToUtf8(winDir) + "\\Fonts\\segoeui.ttf";
+        const float fontPx = std::round(17.0f * g_dpiScale);
+        ImFont* font = fontPath.empty() ? nullptr : io.Fonts->AddFontFromFileTTF(fontPath.c_str(), fontPx);
+        if (!font) {
+            ImFontConfig fc;
+            fc.SizePixels = fontPx;
+            io.Fonts->AddFontDefault(&fc);
+        }
+    }
     ImGui::StyleColorsLight();
-    ApplyEngineCoreTheme();
+    bool darkTheme = false;
+    ReadWindowsDarkMode(darkTheme);
+    ApplyEngineCoreTheme(darkTheme);
 
     ImGui_ImplWin32_Init(hwnd);
 
@@ -773,7 +928,25 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, LPWSTR, int) {
     LARGE_INTEGER prevTime{};
     QueryPerformanceCounter(&prevTime);
 
-    RingBuffer<120> vramPlot, frametimePlot, dpcPlot;
+    // Plots are sampled at 10 Hz (not once per frame) so 240 samples = 24 s of history
+    // regardless of frame rate; frame-work samples keep the worst frame in each bucket.
+    RingBuffer<240> vramPlot, workPlot, dpcPlot;
+    constexpr double kPlotSampleMs = 100.0;
+    double plotAccumMs = 0.0;
+    float plotWorkMax = 0.0f, plotDpcMax = 0.0f;
+    double lastWorkMs = 0.0;   // CPU time spent building+submitting the previous frame (excludes vsync wait)
+    float animTime = 0.0f;     // header animation clock; frozen while the window is in the background
+
+    const std::string gpuName = WideToUtf8(hwProfile.gpuDescription);
+    const char* const profileLabel = hwProfile.profileType == enginecore::HardwareProfileType::IntegratedShared
+        ? "Integrated / shared memory" : "Dedicated GPU";
+    UINT backW = 0, backH = 0;
+    {
+        RECT rc{};
+        GetClientRect(hwnd, &rc);
+        backW = static_cast<UINT>(rc.right - rc.left);
+        backH = static_cast<UINT>(rc.bottom - rc.top);
+    }
     std::uint64_t appFrameIndex = 0;
 
     // Subsystem toggle state, hoisted above the loop (still `static` inside
@@ -785,6 +958,49 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, LPWSTR, int) {
     bool etwSessionOn = true; // orchestrator.AwakenSystem() already ran once, above.
     bool presentMonOn = true; // presentMonHooks.Start() already ran once, above.
     bool systemOn = true;     // master switch; true because every subsystem above was started at launch.
+    bool themeManuallySelected = false;
+    ULONGLONG nextThemeCheck = GetTickCount64();
+
+        bool lowModeOn = false;
+    bool prevDpcOn = false, prevEtwOn = false, prevPmOn = false;
+
+    auto SetLowMode = [&](bool enable) {
+        if (enable == lowModeOn) return;
+        lowModeOn = enable;
+        if (enable) {
+            // Remember what was running so turning Low Mode off restores it.
+            prevDpcOn = dpcSteeringOn;
+            prevEtwOn = etwSessionOn;
+            prevPmOn  = presentMonOn;
+
+            // Stop the ETW consumers first, then drop the privilege they needed.
+            if (dpcSteeringOn) dpcEngine->Stop();
+            if (etwSessionOn)  orchestrator.Shutdown();
+            if (presentMonOn)  presentMonHooks.Stop();
+            EngineCore::Security::SecurityManager::IsRunAsAdmin(); // no-op; keeps include used
+            SetPrivilegeEnabled(L"SeSystemProfilePrivilege", false);
+
+            dpcSteeringOn = etwSessionOn = presentMonOn = false;
+            OutputDebugStringA("EngineCore: Low Mode ON\n");
+        } else {
+            EngineCore::Security::SecurityManager::RequestPrivilege(L"SeSystemProfilePrivilege");
+
+            if (prevDpcOn) {
+                if (const std::error_code ec = dpcEngine->Start(); !ec) dpcEngine->RegisterCurrentThread();
+                dpcSteeringOn = true;
+            }
+            if (prevEtwOn) {
+                awaken = orchestrator.AwakenSystem(targetPid);
+                etwDegraded = (awaken == S_FALSE);
+                etwSessionOn = SUCCEEDED(awaken);
+            }
+            if (prevPmOn) {
+                presentMonHooks.Start(pmCfg);
+                presentMonOn = true;
+            }
+            OutputDebugStringA("EngineCore: Low Mode OFF\n");
+        }
+    };
 
     while (g_running.load(std::memory_order_relaxed)) {
         MSG msg{};
@@ -795,10 +1011,47 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, LPWSTR, int) {
         }
         if (!g_running.load(std::memory_order_relaxed)) break;
 
+        // Minimized: nothing to draw. Sleep until input/messages instead of spinning the
+        // GPU (Present on a minimized flip-model window is wasted work).
+        if (IsIconic(hwnd)) {
+            MsgWaitForMultipleObjects(0, nullptr, FALSE, 100, QS_ALLINPUT);
+            QueryPerformanceCounter(&prevTime);
+            continue;
+        }
+
+        // Swap-chain resize (previously the window could be resized but the back
+        // buffers never followed, leaving a cropped / stretched dashboard).
+        if (g_resizePending.exchange(false, std::memory_order_acq_rel)) {
+            const UINT w = g_resizeW.load(std::memory_order_relaxed);
+            const UINT h = g_resizeH.load(std::memory_order_relaxed);
+            if (w > 0 && h > 0 && (w != backW || h != backH)) {
+                for (UINT i = 0; i < kFrameCount; ++i) WaitForFrame(i);
+                for (auto& bb : backBuffers) bb.Reset();
+                FatalIfFailed(flip.swapChain->ResizeBuffers(0, w, h, DXGI_FORMAT_UNKNOWN, flip.swapChainFlags),
+                              "IDXGISwapChain::ResizeBuffers failed");
+                CreateRtvs();
+                backW = w;
+                backH = h;
+            }
+        }
+
+        const bool foreground = (GetForegroundWindow() == hwnd);
+
+        const ULONGLONG nowMs = GetTickCount64();
+        if (!themeManuallySelected && nowMs >= nextThemeCheck) {
+            nextThemeCheck = nowMs + 1000;
+            bool detectedDarkTheme = darkTheme;
+            if (ReadWindowsDarkMode(detectedDarkTheme) && detectedDarkTheme != darkTheme) {
+                darkTheme = detectedDarkTheme;
+                ApplyEngineCoreTheme(darkTheme);
+            }
+        }
+
         LARGE_INTEGER now{};
         QueryPerformanceCounter(&now);
         const double cpuFrameTimeMs = QpcToMs(now.QuadPart - prevTime.QuadPart, qpcFreq.QuadPart);
         prevTime = now;
+        if (foreground) animTime += static_cast<float>(std::min(cpuFrameTimeMs, 100.0) / 1000.0);
 
         const float orbitT = static_cast<float>(ImGui::GetTime()) * 0.4f;
         const enginecore::Float3 demoPlayerPos{std::cos(orbitT) * 40.0f, 0.0f, std::sin(orbitT) * 40.0f};
@@ -816,9 +1069,20 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, LPWSTR, int) {
         orchestrator.Tick(frameIn);
 
         const enginecore::TelemetrySnapshot snap = orchestrator.GetTelemetrySnapshot();
-        vramPlot.Push(snap.vram.pressure * 100.0f);
-        frametimePlot.Push(static_cast<float>(cpuFrameTimeMs));
-        dpcPlot.Push(static_cast<float>(snap.dpc.worstDpcLatencyUs));
+        // Worst DPC: the orchestrator's adapter value, or the engine's own lock-free readout.
+        const double dpcNowUs = std::max(snap.dpc.worstDpcLatencyUs, dpcEngine->WorstDpcMicros());
+
+        plotAccumMs += cpuFrameTimeMs;
+        plotWorkMax = std::max(plotWorkMax, static_cast<float>(lastWorkMs));
+        plotDpcMax = std::max(plotDpcMax, static_cast<float>(dpcNowUs));
+        if (plotAccumMs >= kPlotSampleMs) {
+            plotAccumMs = 0.0;
+            vramPlot.Push(snap.vram.pressure * 100.0f);
+            workPlot.Push(plotWorkMax);
+            dpcPlot.Push(plotDpcMax);
+            plotWorkMax = 0.0f;
+            plotDpcMax = 0.0f;
+        }
 
         ImGui_ImplDX12_NewFrame();
         ImGui_ImplWin32_NewFrame();
@@ -831,155 +1095,123 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, LPWSTR, int) {
                      ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoMove |
                      ImGuiWindowFlags_NoBringToFrontOnFocus | ImGuiWindowFlags_NoNavFocus);
 
-        DrawRgbFogHeaderBar(ImGui::GetContentRegionAvail().x, 48.0f);
+        const float u = ImGui::GetFontSize();
+        const ImGuiStyle& st = ImGui::GetStyle();
+        const float contentW = ImGui::GetContentRegionAvail().x;
+
+        DrawRgbFogHeaderBar(contentW, u * 3.4f, animTime, "EngineCore", "Telemetry Orchestrator");
         ImGui::Spacing();
 
-        // --- Master power switch: one place that cascades to every
-        //     subsystem. Individual per-subsystem buttons further down
-        //     still work independently afterward - this just forces all
-        //     four into the same state in one click. -----------------------
-        {
-            char powerLabel[48];
-            FormatBuf(powerLabel, systemOn ? "SYSTEM ONLINE - click to power off" : "SYSTEM OFFLINE - click to power on");
-            if (PowerToggleButton(powerLabel, systemOn, ImVec2(ImGui::GetContentRegionAvail().x, 60.0f))) {
-                systemOn = !systemOn;
-                if (systemOn) {
-                    if (const std::error_code ec = dpcEngine->Start(); !ec) dpcEngine->RegisterCurrentThread();
-                    dpcSteeringOn = true;
+        // --- Environment line (left) + theme switch (right) ----------------------
+        if (ImGui::BeginTable("##info", 2, ImGuiTableFlags_SizingStretchProp)) {
+            const char* themeLbl = darkTheme ? "Light theme" : "Dark theme";
+            const float themeBtnW = ImGui::CalcTextSize(themeLbl).x + st.FramePadding.x * 2.0f;
+            ImGui::TableSetupColumn("##a", ImGuiTableColumnFlags_WidthStretch);
+            ImGui::TableSetupColumn("##b", ImGuiTableColumnFlags_WidthFixed, themeBtnW);
+            ImGui::TableNextColumn();
+            ImGui::AlignTextToFramePadding();
+            ImGui::TextWrapped("%s  |  %s  |  %u logical cores  |  %s", gpuName.c_str(), profileLabel,
+                               static_cast<unsigned>(hwProfile.logicalCpuCores),
+                               isAdmin ? "Administrator" : "Standard user");
+            ImGui::TableNextColumn();
+            if (ImGui::Button(themeLbl, ImVec2(themeBtnW, 0.0f))) {
+                darkTheme = !darkTheme;
+                themeManuallySelected = true;
+                ApplyEngineCoreTheme(darkTheme);
+            }
+            ImGui::EndTable();
+        }
 
-                    psoService->SetEnabled(true);
-                    psoAgentOn = true;
+        // --- Master power switch + Low Mode --------------------------------------
+        if (ImGui::BeginTable("##power", 2, ImGuiTableFlags_SizingStretchProp)) {
+            ImGui::TableSetupColumn("##m", ImGuiTableColumnFlags_WidthStretch, 3.0f);
+            ImGui::TableSetupColumn("##l", ImGuiTableColumnFlags_WidthStretch, 1.4f);
 
-                    awaken = orchestrator.AwakenSystem(targetPid);
-                    etwDegraded = (awaken == S_FALSE);
-                    if (FAILED(awaken)) OutputDebugStringA("EngineOrchestrator::AwakenSystem failed on system power-on.\n");
-                    etwSessionOn = true;
+            ImGui::TableNextColumn();
+            {
+                char powerLabel[48];
+                FormatBuf(powerLabel, systemOn ? "SYSTEM ONLINE - click to power off" : "SYSTEM OFFLINE - click to power on");
+                ImGui::BeginDisabled(lowModeOn);
+                const bool powerClicked =
+                    PowerToggleButton(powerLabel, systemOn, ImVec2(ImGui::GetContentRegionAvail().x, u * 3.6f));
+                ImGui::EndDisabled();
+                if (powerClicked) {
+                    systemOn = !systemOn;
+                    if (systemOn) {
+                        if (const std::error_code ec = dpcEngine->Start(); !ec) dpcEngine->RegisterCurrentThread();
+                        dpcSteeringOn = true;
 
-                    const auto pmResult = presentMonHooks.Start(pmCfg);
-                    if (pmResult == EngineCore::Telemetry::StartResult::DegradedNoPrivilege) {
-                        OutputDebugStringA("EngineCore: PresentMonHooks degraded on system power-on - no ETW privilege.\n");
+                        psoService->SetEnabled(true);
+                        psoAgentOn = true;
+
+                        awaken = orchestrator.AwakenSystem(targetPid);
+                        etwDegraded = (awaken == S_FALSE);
+                        if (FAILED(awaken)) OutputDebugStringA("EngineOrchestrator::AwakenSystem failed on system power-on.\n");
+                        etwSessionOn = true;
+
+                        const auto pmResult = presentMonHooks.Start(pmCfg);
+                        if (pmResult == EngineCore::Telemetry::StartResult::DegradedNoPrivilege) {
+                            OutputDebugStringA("EngineCore: PresentMonHooks degraded on system power-on - no ETW privilege.\n");
+                        }
+                        presentMonOn = true;
+                    } else {
+                        dpcEngine->Stop();
+                        dpcSteeringOn = false;
+
+                        psoService->SetEnabled(false);
+                        psoAgentOn = false;
+
+                        orchestrator.Shutdown();
+                        etwSessionOn = false;
+
+                        presentMonHooks.Stop();
+                        presentMonOn = false;
                     }
-                    presentMonOn = true;
-                } else {
-                    dpcEngine->Stop();
-                    dpcSteeringOn = false;
-
-                    psoService->SetEnabled(false);
-                    psoAgentOn = false;
-
-                    orchestrator.Shutdown();
-                    etwSessionOn = false;
-
-                    presentMonHooks.Stop();
-                    presentMonOn = false;
                 }
             }
+
+            ImGui::TableNextColumn();
+            {
+                char lowLabel[64];
+                FormatBuf(lowLabel, "Low Mode  [%s]\nStops ETW, DPC, PresentMon", lowModeOn ? "ON" : "OFF");
+                if (LiquidGlassButton(lowLabel, ImVec2(ImGui::GetContentRegionAvail().x, u * 3.6f), lowModeOn))
+                    SetLowMode(!lowModeOn);
+                if (ImGui::IsItemHovered())
+                    ImGui::SetTooltip("Disables the SeSystemProfilePrivilege, PresentMon hooks, ETW kernel telemetry\n"
+                                      "and DPC steering. Turning it off restores whatever was running before.");
+            }
+            ImGui::EndTable();
         }
         ImGui::Spacing();
 
-        // --- Top status bar ------------------------------------------------
-        ImGui::Text("ETW: %s%s", snap.etwActive ? "ACTIVE" : "INACTIVE", etwDegraded ? " (degraded start)" : "");
-        ImGui::SameLine(0, 30);
-        ImGui::Text("Target PID: %lu", static_cast<unsigned long>(snap.targetProcessId));
-        ImGui::SameLine(0, 30);
-        ImGui::Text("App Frame: %llu", static_cast<unsigned long long>(appFrameIndex));
-        ImGui::SameLine(0, 30);
-        ImGui::TextColored(snap.targetProcessAlive ? ImVec4(0.10f, 0.55f, 0.20f, 1.0f) : ImVec4(0.70f, 0.12f, 0.12f, 1.0f),
-                           snap.targetProcessAlive ? "TARGET ALIVE" : "TARGET GONE");
-
-        // --- Subsystem health strip: at-a-glance colored-dot status for
-        //     every agent/service this dashboard controls. Pure readout -
-        //     it reflects the same bools the buttons below use, never sets
-        //     anything on its own. -----------------------------------------
-        ImGui::Spacing();
+        // --- Subsystem health chips (wrap on narrow windows) ---------------------
         {
             const ImVec4 green(0.15f, 0.58f, 0.27f, 1.0f);
             const ImVec4 gray(0.55f, 0.55f, 0.58f, 1.0f);
             const ImVec4 amber(0.82f, 0.55f, 0.10f, 1.0f);
             const ImVec4 red(0.75f, 0.16f, 0.16f, 1.0f);
 
-            StatusDot("DPC Steering", dpcSteeringOn ? green : gray);
-            ImGui::SameLine(0, 26);
-            StatusDot("PSO Agent", psoAgentOn ? green : gray);
-            ImGui::SameLine(0, 26);
-            StatusDot("ETW Telemetry", etwSessionOn ? green : gray);
-            ImGui::SameLine(0, 26);
-            StatusDot("PresentMon", presentMonOn ? green : gray);
-            ImGui::SameLine(0, 26);
-
+            const bool dpcTrace = dpcEngine->IsTraceActive();
             const float pressureRatio =
                 orchConfig.highVramPressure > 0.0f ? snap.vram.pressure / orchConfig.highVramPressure : 0.0f;
             ImVec4 vramColor = green;
             if (pressureRatio >= 1.0f) vramColor = red;
             else if (pressureRatio >= 0.75f) vramColor = amber;
-            char vramStatusLabel[32];
-            FormatBuf(vramStatusLabel, "VRAM %.0f%%", snap.vram.pressure * 100.0f);
-            StatusDot(vramStatusLabel, vramColor);
-        }
+            char vramChip[32];
+            FormatBuf(vramChip, "VRAM %.0f%%", snap.vram.pressure * 100.0f);
 
-        ImGui::Separator();
-        ImGui::Spacing();
-
-        // --- Interactive controls (5 dedicated toggle/action buttons) ------
-        constexpr int kButtonCount = 5;
-        const float btnWidth =
-            (ImGui::GetContentRegionAvail().x - static_cast<float>(kButtonCount - 1) * ImGui::GetStyle().ItemSpacing.x) /
-            static_cast<float>(kButtonCount);
-        const ImVec2 btnSize(btnWidth, 56.0f);
-
-        char dpcLabel[64];
-        FormatBuf(dpcLabel, "Toggle DPC Affinity Steering\n[%s]", dpcSteeringOn ? "ON" : "OFF");
-        if (LiquidGlassButton(dpcLabel, btnSize, dpcSteeringOn)) {
-            dpcSteeringOn = !dpcSteeringOn;
-            if (dpcSteeringOn) {
-                if (const std::error_code ec = dpcEngine->Start(); !ec) dpcEngine->RegisterCurrentThread();
-            } else {
-                dpcEngine->Stop();
-            }
-        }
-        ImGui::SameLine();
-
-        char vramLabel[96];
-        const std::uint64_t freeableBytes = vramPool.EstimateFreeableBytes(appFrameIndex, kDemoStaleFrames);
-        FormatBuf(vramLabel, "Flush Inactive VRAM\n%.1f MB freeable", static_cast<double>(freeableBytes) / (1024.0 * 1024.0));
-        if (LiquidGlassButton(vramLabel, btnSize)) {
-            vramPool.FlushInactive(appFrameIndex, kDemoStaleFrames);
-        }
-        ImGui::SameLine();
-
-        char hintLabel[64];
-        FormatBuf(hintLabel, "Force Early Pipeline Hint\n(%.0f%% Trigger)",
-              orchConfig.earlyWarningProgress * 100.0f);
-        if (LiquidGlassButton(hintLabel, btnSize)) {
-            enginecore::NextFrameHint hint{};
-            hint.targetFrameIndex = appFrameIndex + 1;
-            hint.timestampQpc = static_cast<std::uint64_t>(now.QuadPart);
-            hint.cpuProgressAtTrigger = orchConfig.earlyWarningProgress;
-            hint.expectedFrameTimeMs = frameIn.targetFrameTimeMs;
-            hint.vramPressure = snap.vram.pressure;
-            hint.preferReducedResidency = snap.vram.pressure >= orchConfig.highVramPressure;
-            deps.gpuHintSink->PrepareNextFramePipeline(hint);
-        }
-        ImGui::SameLine();
-
-        char psoLabel[64];
-        FormatBuf(psoLabel, "Toggle PSO Compiling Agent\n[%s]", psoAgentOn ? "ON" : "OFF");
-        if (LiquidGlassButton(psoLabel, btnSize, psoAgentOn)) {
-            psoAgentOn = !psoAgentOn;
-            psoService->SetEnabled(psoAgentOn);
-        }
-        ImGui::SameLine();
-
-        char etwLabel[64];
-        FormatBuf(etwLabel, "Toggle ETW Telemetry Session\n[%s]", etwSessionOn ? "ON" : "OFF");
-        if (LiquidGlassButton(etwLabel, btnSize, etwSessionOn)) {
-            etwSessionOn = !etwSessionOn;
-            if (etwSessionOn) {
-                awaken = orchestrator.AwakenSystem(targetPid);
-                etwDegraded = (awaken == S_FALSE);
-                if (FAILED(awaken)) OutputDebugStringA("EngineOrchestrator::AwakenSystem failed on manual re-awaken.\n");
-            } else {
-                orchestrator.Shutdown();
+            struct Chip { const char* label; ImVec4 color; };
+            const Chip chips[] = {
+                {dpcSteeringOn && !dpcTrace ? "DPC Steering (no trace - needs admin)" : "DPC Steering",
+                 dpcSteeringOn ? (dpcTrace ? green : amber) : gray},
+                {"PSO Agent", psoAgentOn ? green : gray},
+                {"ETW Telemetry", etwSessionOn ? (snap.etwActive ? green : amber) : gray},
+                {"PresentMon", presentMonOn ? green : gray},
+                {vramChip, vramColor},
+            };
+            for (std::size_t i = 0; i < std::size(chips); ++i) {
+                if (i > 0) SameLineWrap(StatusDotWidth(chips[i].label), 26.0f * g_dpiScale);
+                StatusDot(chips[i].label, chips[i].color);
             }
         }
 
@@ -987,57 +1219,167 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, LPWSTR, int) {
         ImGui::Separator();
         ImGui::Spacing();
 
-        const float plotWidth = (ImGui::GetContentRegionAvail().x - 2.0f * ImGui::GetStyle().ItemSpacing.x) / 3.0f;
-        const ImVec2 plotSize(plotWidth, 140.0f);
+        // --- Controls: responsive grid of toggle/action buttons ------------------
+        {
+            const int ctlCols = std::clamp(static_cast<int>(contentW / (u * 14.0f)), 1, 5);
+            const float btnH = u * 3.6f;
+            if (ImGui::BeginTable("##controls", ctlCols, ImGuiTableFlags_SizingStretchSame)) {
+                // 1) DPC steering (locked while Low Mode owns it)
+                ImGui::TableNextColumn();
+                ImGui::BeginDisabled(lowModeOn);
+                {
+                    char label[64];
+                    FormatBuf(label, "Toggle DPC Affinity Steering\n[%s]", dpcSteeringOn ? "ON" : "OFF");
+                    if (LiquidGlassButton(label, ImVec2(ImGui::GetContentRegionAvail().x, btnH), dpcSteeringOn)) {
+                        dpcSteeringOn = !dpcSteeringOn;
+                        if (dpcSteeringOn) {
+                            if (const std::error_code ec = dpcEngine->Start(); !ec) dpcEngine->RegisterCurrentThread();
+                        } else {
+                            dpcEngine->Stop();
+                        }
+                    }
+                }
+                ImGui::EndDisabled();
 
-        {
-            const auto data = vramPlot.Ordered();
-            char overlay[32];
-            FormatBuf(overlay, "%.1f %%", snap.vram.pressure * 100.0f);
-            ImGui::BeginGroup();
-            ImGui::Text("VRAM Usage %%");
-            ImGui::PlotLines("##vram", data.data(), static_cast<int>(vramPlot.Count()), 0, overlay, 0.0f, 100.0f, plotSize);
-            ImGui::EndGroup();
-        }
-        ImGui::SameLine();
-        {
-            const auto data = frametimePlot.Ordered();
-            char overlay[32];
-            FormatBuf(overlay, "%.2f ms", cpuFrameTimeMs);
-            ImGui::BeginGroup();
-            ImGui::Text("Frametime (ms)");
-            ImGui::PlotLines("##frametime", data.data(), static_cast<int>(frametimePlot.Count()), 0, overlay, 0.0f, 33.3f, plotSize);
-            ImGui::EndGroup();
-        }
-        ImGui::SameLine();
-        {
-            const auto data = dpcPlot.Ordered();
-            char overlay[32];
-            FormatBuf(overlay, "%.1f us", snap.dpc.worstDpcLatencyUs);
-            ImGui::BeginGroup();
-            ImGui::Text("DPC Latency (us)");
-            ImGui::PlotLines("##dpc", data.data(), static_cast<int>(dpcPlot.Count()), 0, overlay, 0.0f, 200.0f, plotSize);
-            ImGui::EndGroup();
+                // 2) Flush inactive VRAM
+                ImGui::TableNextColumn();
+                {
+                    char label[96];
+                    const std::uint64_t freeableBytes = vramPool.EstimateFreeableBytes(appFrameIndex, kDemoStaleFrames);
+                    FormatBuf(label, "Flush Inactive VRAM\n%.1f MB freeable", static_cast<double>(freeableBytes) / (1024.0 * 1024.0));
+                    if (LiquidGlassButton(label, ImVec2(ImGui::GetContentRegionAvail().x, btnH))) {
+                        vramPool.FlushInactive(appFrameIndex, kDemoStaleFrames);
+                    }
+                }
+
+                // 3) Force early pipeline hint
+                ImGui::TableNextColumn();
+                {
+                    char label[64];
+                    FormatBuf(label, "Force Early Pipeline Hint\n(%.0f%% Trigger)", orchConfig.earlyWarningProgress * 100.0f);
+                    if (LiquidGlassButton(label, ImVec2(ImGui::GetContentRegionAvail().x, btnH))) {
+                        enginecore::NextFrameHint hint{};
+                        hint.targetFrameIndex = appFrameIndex + 1;
+                        hint.timestampQpc = static_cast<std::uint64_t>(now.QuadPart);
+                        hint.cpuProgressAtTrigger = orchConfig.earlyWarningProgress;
+                        hint.expectedFrameTimeMs = frameIn.targetFrameTimeMs;
+                        hint.vramPressure = snap.vram.pressure;
+                        hint.preferReducedResidency = snap.vram.pressure >= orchConfig.highVramPressure;
+                        deps.gpuHintSink->PrepareNextFramePipeline(hint);
+                    }
+                }
+
+                // 4) PSO compiling agent
+                ImGui::TableNextColumn();
+                {
+                    char label[64];
+                    FormatBuf(label, "Toggle PSO Compiling Agent\n[%s]", psoAgentOn ? "ON" : "OFF");
+                    if (LiquidGlassButton(label, ImVec2(ImGui::GetContentRegionAvail().x, btnH), psoAgentOn)) {
+                        psoAgentOn = !psoAgentOn;
+                        psoService->SetEnabled(psoAgentOn);
+                    }
+                }
+
+                // 5) ETW telemetry session (locked while Low Mode owns it)
+                ImGui::TableNextColumn();
+                ImGui::BeginDisabled(lowModeOn);
+                {
+                    char label[64];
+                    FormatBuf(label, "Toggle ETW Telemetry Session\n[%s]", etwSessionOn ? "ON" : "OFF");
+                    if (LiquidGlassButton(label, ImVec2(ImGui::GetContentRegionAvail().x, btnH), etwSessionOn)) {
+                        etwSessionOn = !etwSessionOn;
+                        if (etwSessionOn) {
+                            awaken = orchestrator.AwakenSystem(targetPid);
+                            etwDegraded = (awaken == S_FALSE);
+                            if (FAILED(awaken)) OutputDebugStringA("EngineOrchestrator::AwakenSystem failed on manual re-awaken.\n");
+                        } else {
+                            orchestrator.Shutdown();
+                        }
+                    }
+                }
+                ImGui::EndDisabled();
+
+                ImGui::EndTable();
+            }
         }
 
         ImGui::Spacing();
         ImGui::Separator();
         ImGui::Spacing();
 
-        ImGui::Text("Early Warnings Sent: %llu", static_cast<unsigned long long>(snap.earlyWarningsSent));
-        ImGui::SameLine(0, 40);
-        ImGui::Text("PSOs Enqueued: %llu", static_cast<unsigned long long>(snap.psoRequestsEnqueued));
-        ImGui::SameLine(0, 40);
-        ImGui::Text("Direction Purges: %llu", static_cast<unsigned long long>(snap.directionChangePurges));
-        ImGui::SameLine(0, 40);
-        ImGui::Text("Generated Frames: %llu", static_cast<unsigned long long>(snap.generatedFrames));
-        ImGui::SameLine(0, 40);
-        ImGui::Text("VRAM Pressure: %.1f %%", snap.vram.pressure * 100.0f);
-        ImGui::SameLine(0, 40);
-        ImGui::Text("Agent Faults: %llu", static_cast<unsigned long long>(snap.agentFaults));
-        ImGui::SameLine(0, 40);
-        ImGui::Text("Present FPS: %.1f%s", presentMonHooks.SafetyValveEstimator().EstimatedFps(),
-                   presentMonHooks.SafetyValveEstimator().IsBelowSafetyFloor() ? " (BELOW FLOOR)" : "");
+        // --- Plots: three columns when wide, stacked when narrow -----------------
+        {
+            const int plotCols = contentW >= u * 48.0f ? 3 : 1;
+            const float plotH = u * 8.0f;
+            if (ImGui::BeginTable("##plots", plotCols, ImGuiTableFlags_SizingStretchSame)) {
+                char overlay[32];
+                char footer[96];
+
+                ImGui::TableNextColumn();
+                FormatBuf(overlay, "%.1f %%", snap.vram.pressure * 100.0f);
+                FormatBuf(footer, "used %.0f / %.0f MB  |  peak %.1f %%",
+                          static_cast<double>(snap.vram.usageBytes) / (1024.0 * 1024.0),
+                          static_cast<double>(snap.vram.budgetBytes) / (1024.0 * 1024.0), vramPlot.Max());
+                PlotCard("VRAM usage %", "##vram", vramPlot, 0.0f, 100.0f, overlay, footer, plotH);
+
+                ImGui::TableNextColumn();
+                FormatBuf(overlay, "%.2f ms", lastWorkMs);
+                FormatBuf(footer, "interval %.1f ms (%.0f FPS, vsync-paced)", cpuFrameTimeMs,
+                          cpuFrameTimeMs > 0.0 ? 1000.0 / cpuFrameTimeMs : 0.0);
+                PlotCard("UI frame work (ms)", "##work", workPlot, 0.0f, std::max(4.0f, workPlot.Max() * 1.25f),
+                         overlay, footer, plotH);
+
+                ImGui::TableNextColumn();
+                FormatBuf(overlay, "%.1f us", dpcNowUs);
+                FormatBuf(footer, "%s", dpcEngine->IsTraceActive() ? "trace active  |  peak per 100 ms"
+                                                                    : "trace inactive - run as Administrator");
+                PlotCard("Worst DPC latency (us)", "##dpc", dpcPlot, 0.0f, std::max(100.0f, dpcPlot.Max() * 1.25f),
+                         overlay, footer, plotH);
+
+                ImGui::EndTable();
+            }
+        }
+
+        ImGui::Spacing();
+        ImGui::Separator();
+        ImGui::Spacing();
+
+        // --- Counters grid --------------------------------------------------------
+        {
+            const int statCols = std::clamp(static_cast<int>(contentW / (u * 11.0f)), 2, 6);
+            if (ImGui::BeginTable("##stats", statCols, ImGuiTableFlags_SizingStretchSame)) {
+                auto Tile = [](const char* label, const char* value) {
+                    ImGui::TableNextColumn();
+                    ImGui::TextDisabled("%s", label);
+                    ImGui::TextUnformatted(value);
+                    ImGui::Spacing();
+                };
+                char b[64];
+
+                FormatBuf(b, "%s%s", snap.etwActive ? "active" : "inactive", etwDegraded ? " (degraded)" : "");
+                Tile("ETW session", b);
+                FormatBuf(b, "%lu", static_cast<unsigned long>(snap.targetProcessId));
+                Tile("Target PID", b);
+                Tile("Target process", snap.targetProcessAlive ? "alive" : "gone");
+                FormatBuf(b, "%llu", static_cast<unsigned long long>(appFrameIndex));
+                Tile("App frame", b);
+                FormatBuf(b, "%llu", static_cast<unsigned long long>(snap.earlyWarningsSent));
+                Tile("Early warnings sent", b);
+                FormatBuf(b, "%llu", static_cast<unsigned long long>(snap.psoRequestsEnqueued));
+                Tile("PSOs enqueued", b);
+                FormatBuf(b, "%llu", static_cast<unsigned long long>(snap.directionChangePurges));
+                Tile("Direction purges", b);
+                FormatBuf(b, "%llu", static_cast<unsigned long long>(snap.generatedFrames));
+                Tile("Generated frames", b);
+                FormatBuf(b, "%llu", static_cast<unsigned long long>(snap.agentFaults));
+                Tile("Agent faults", b);
+                FormatBuf(b, "%.1f%s", presentMonHooks.SafetyValveEstimator().EstimatedFps(),
+                          presentMonHooks.SafetyValveEstimator().IsBelowSafetyFloor() ? " (below floor)" : "");
+                Tile("Present FPS", b);
+
+                ImGui::EndTable();
+            }
+        }
 
         ImGui::End();
         ImGui::Render();
@@ -1058,7 +1400,12 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, LPWSTR, int) {
 
         D3D12_CPU_DESCRIPTOR_HANDLE rtv = rtvHeap->GetCPUDescriptorHandleForHeapStart();
         rtv.ptr += static_cast<SIZE_T>(backIdx) * rtvStride;
-        constexpr float clearColor[4] = {0.97f, 0.97f, 0.98f, 1.0f};
+        const float clearColor[4] = {
+            darkTheme ? 0.0f : 1.0f,
+            darkTheme ? 0.0f : 1.0f,
+            darkTheme ? 0.0f : 1.0f,
+            1.0f
+        };
         cmdList->OMSetRenderTargets(1, &rtv, FALSE, nullptr);
         cmdList->ClearRenderTargetView(rtv, clearColor, 0, nullptr);
 
@@ -1075,6 +1422,10 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, LPWSTR, int) {
         ID3D12CommandList* lists[] = {cmdList.Get()};
         graphicsQueue->ExecuteCommandLists(1, lists);
 
+        LARGE_INTEGER submitQpc{};
+        QueryPerformanceCounter(&submitQpc);
+        lastWorkMs = QpcToMs(submitQpc.QuadPart - now.QuadPart, qpcFreq.QuadPart);
+
         flip.swapChain->Present(1, flip.PresentFlags(1));
 
         frameFenceValues[backIdx] = nextFenceValue;
@@ -1082,6 +1433,10 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, LPWSTR, int) {
         ++nextFenceValue;
 
         (void)flip.WaitForNextFrame();
+
+        // Not the foreground window (e.g. the game has focus): drop to ~15 FPS so the
+        // dashboard stops competing with the game for CPU/GPU. Input still wakes us.
+        if (!foreground) MsgWaitForMultipleObjects(0, nullptr, FALSE, 50, QS_ALLINPUT);
         ++appFrameIndex;
     }
 

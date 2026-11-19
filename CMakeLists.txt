@@ -28,6 +28,7 @@ add_library(EngineCoreLib STATIC
     src/shader/vault_purging.cpp
     src/telemetry/vram_monitor.cpp
     src/network/pso_cloud_network.cpp
+    src/core/adaptive_profile.cpp
 )
 
 target_compile_definitions(EngineCoreLib PUBLIC NOMINMAX UNICODE _UNICODE)
@@ -35,6 +36,7 @@ target_compile_definitions(EngineCoreLib PUBLIC NOMINMAX UNICODE _UNICODE)
 # 4. Executable: GUI subsystem (WIN32 keyword goes here, not on add_library)
 add_executable(EngineCoreApp WIN32
     src/main.cpp
+    EngineCoreApp.rc
     ${IMGUI_DIR}/imgui.cpp
     ${IMGUI_DIR}/imgui_draw.cpp
     ${IMGUI_DIR}/imgui_widgets.cpp
@@ -44,6 +46,13 @@ add_executable(EngineCoreApp WIN32
 )
 
 target_compile_definitions(EngineCoreApp PRIVATE NOMINMAX UNICODE _UNICODE)
+
+set(APP_MANIFEST "${CMAKE_CURRENT_SOURCE_DIR}/EngineCoreApp.manifest")
+target_link_options(EngineCoreApp PRIVATE
+    "/MANIFEST:EMBED"
+    "/MANIFESTINPUT:${APP_MANIFEST}"
+    "/MANIFESTUAC:NO"
+)
 
 # 5. Link everything the engine modules + ImGui backends need
 target_link_libraries(EngineCoreApp PRIVATE

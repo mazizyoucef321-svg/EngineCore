@@ -27,6 +27,11 @@
     <CustomBuild Include="C:\Users\Anotech\Desktop\THE SYSTEM\CMakeLists.txt" />
   </ItemGroup>
   <ItemGroup>
+    <ResourceCompile Include="C:\Users\Anotech\Desktop\THE SYSTEM\EngineCoreApp.rc">
+      <Filter>Source Files</Filter>
+    </ResourceCompile>
+  </ItemGroup>
+  <ItemGroup>
     <Filter Include="Source Files">
       <UniqueIdentifier>{D5A1A022-ACC4-357D-AD6B-77E57FFA4AD1}</UniqueIdentifier>
     </Filter>

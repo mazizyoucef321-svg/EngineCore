@@ -1,41 +1,8 @@
 ================================================================================
 Linker Errors
-Generated: 2026-09-29T07:57:29.697Z
-Total Errors: 12
+Generated: 2026-11-19T04:52:32.152Z
+Total Errors: 1
 ================================================================================
 
-[LNK2019] (MSVC)
-unresolved external symbol "public: __cdecl EngineCore::Core::DpcSteeringEngine::DpcSteeringEngine(struct EngineCore::Core::DpcSteeringConfig)" (??0DpcSteeringEngine@Core@EngineCore@@QEAA@UDpcSteeringConfig@12@@Z) referenced in function "void __cdecl std::_Construct_in_place<class EngineCore::Core::DpcSteeringEngine>(class EngineCore::Core::DpcSteeringEngine &)" (??$_Construct_in_place@VDpcSteeringEngine@Core@EngineCore@@$$V@std@@YAXAEAVDpcSteeringEngine@Core@EngineCore@@@Z) [C:\Users\Anotech\Desktop\THE SYSTEM\build\EngineCoreApp.vcxproj]
-
-[LNK2019] (MSVC)
-unresolved external symbol "public: __cdecl EngineCore::Core::DpcSteeringEngine::~DpcSteeringEngine(void)" (??1DpcSteeringEngine@Core@EngineCore@@QEAA@XZ) referenced in function "public: void * __cdecl EngineCore::Core::DpcSteeringEngine::`scalar deleting destructor'(unsigned int)" (??_GDpcSteeringEngine@Core@EngineCore@@QEAAPEAXI@Z) [C:\Users\Anotech\Desktop\THE SYSTEM\build\EngineCoreApp.vcxproj]
-
-[LNK2019] (MSVC)
-unresolved external symbol "public: class std::error_code __cdecl EngineCore::Core::DpcSteeringEngine::Start(void)" (?Start@DpcSteeringEngine@Core@EngineCore@@QEAA?AVerror_code@std@@XZ) referenced in function wWinMain [C:\Users\Anotech\Desktop\THE SYSTEM\build\EngineCoreApp.vcxproj]
-
-[LNK2019] (MSVC)
-unresolved external symbol "public: void __cdecl EngineCore::Core::DpcSteeringEngine::Stop(void)" (?Stop@DpcSteeringEngine@Core@EngineCore@@QEAAXXZ) referenced in function wWinMain [C:\Users\Anotech\Desktop\THE SYSTEM\build\EngineCoreApp.vcxproj]
-
-[LNK2019] (MSVC)
-unresolved external symbol "public: bool __cdecl EngineCore::Core::DpcSteeringEngine::RegisterCurrentThread(void)" (?RegisterCurrentThread@DpcSteeringEngine@Core@EngineCore@@QEAA_NXZ) referenced in function wWinMain [C:\Users\Anotech\Desktop\THE SYSTEM\build\EngineCoreApp.vcxproj]
-
-[LNK2019] (MSVC)
-unresolved external symbol "public: struct EngineCore::Core::CongestionSnapshot __cdecl EngineCore::Core::DpcSteeringEngine::GetSnapshot(void)const " (?GetSnapshot@DpcSteeringEngine@Core@EngineCore@@QEBA?AUCongestionSnapshot@23@XZ) referenced in function "public: virtual struct enginecore::DpcSteeringStats __cdecl enginecore::adapters::DpcSteeringAdapter::QueryStats(void)const " (?QueryStats@DpcSteeringAdapter@adapters@enginecore@@UEBA?AUDpcSteeringStats@3@XZ) [C:\Users\Anotech\Desktop\THE SYSTEM\build\EngineCoreApp.vcxproj]
-
-[LNK2019] (MSVC)
-unresolved external symbol "public: class std::error_code __cdecl EngineCore::Telemetry::VramBudgetMonitor::Initialize(struct IDXGIAdapter *,double,class std::chrono::duration<__int64,struct std::ratio<1,1000> >,unsigned int)" (?Initialize@VramBudgetMonitor@Telemetry@EngineCore@@QEAA?AVerror_code@std@@PEAUIDXGIAdapter@@NV?$duration@_JU?$ratio@$00$0DOI@@std@@@chrono@5@I@Z) referenced in function wWinMain [C:\Users\Anotech\Desktop\THE SYSTEM\build\EngineCoreApp.vcxproj]
-
-[LNK2019] (MSVC)
-unresolved external symbol "public: void __cdecl EngineCore::Telemetry::VramBudgetMonitor::Shutdown(void)" (?Shutdown@VramBudgetMonitor@Telemetry@EngineCore@@QEAAXXZ) referenced in function wWinMain [C:\Users\Anotech\Desktop\THE SYSTEM\build\EngineCoreApp.vcxproj]
-
-[LNK2019] (MSVC)
-unresolved external symbol "public: struct EngineCore::Telemetry::VramBudgetSnapshot __cdecl EngineCore::Telemetry::VramBudgetMonitor::GetSnapshot(void)const " (?GetSnapshot@VramBudgetMonitor@Telemetry@EngineCore@@QEBA?AUVramBudgetSnapshot@23@XZ) referenced in function "public: virtual struct enginecore::VramBudgetStats __cdecl enginecore::adapters::VramBudgetAdapter::QueryStats(void)const " (?QueryStats@VramBudgetAdapter@adapters@enginecore@@UEBA?AUVramBudgetStats@3@XZ) [C:\Users\Anotech\Desktop\THE SYSTEM\build\EngineCoreApp.vcxproj]
-
-[LNK2019] (MSVC)
-unresolved external symbol "public: static class std::error_code __cdecl EngineCore::Telemetry::VramBudgetMonitor::ConfigureFlipModelSwapChain(struct IDXGIFactory2 *,struct IUnknown *,struct HWND__ *,struct EngineCore::Telemetry::FlipModelConfig const &,struct EngineCore::Telemetry::FlipModelSwapChain &)" (?ConfigureFlipModelSwapChain@VramBudgetMonitor@Telemetry@EngineCore@@SA?AVerror_code@std@@PEAUIDXGIFactory2@@PEAUIUnknown@@PEAUHWND__@@AEBUFlipModelConfig@23@AEAUFlipModelSwapChain@23@@Z) referenced in function wWinMain [C:\Users\Anotech\Desktop\THE SYSTEM\build\EngineCoreApp.vcxproj]
-
-[LNK2019] (MSVC)
-unresolved external symbol main referenced in function "int __cdecl invoke_main(void)" (?invoke_main@@YAHXZ) [C:\Users\Anotech\Desktop\THE SYSTEM\build\EngineCoreApp.vcxproj]
-
-[LNK1120] (MSVC)
-11 unresolved externals [C:\Users\Anotech\Desktop\THE SYSTEM\build\EngineCoreApp.vcxproj]
+[LNK1104] (MSVC)
+cannot open file 'C:\Users\Anotech\Desktop\THE SYSTEM\build\Release\EngineCoreApp.exe' [C:\Users\Anotech\Desktop\THE SYSTEM\build\EngineCoreApp.vcxproj]

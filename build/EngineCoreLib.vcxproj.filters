@@ -22,6 +22,9 @@
     <ClCompile Include="C:\Users\Anotech\Desktop\THE SYSTEM\src\network\pso_cloud_network.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="C:\Users\Anotech\Desktop\THE SYSTEM\src\core\adaptive_profile.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <CustomBuild Include="C:\Users\Anotech\Desktop\THE SYSTEM\CMakeLists.txt" />

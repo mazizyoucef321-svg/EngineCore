@@ -93,6 +93,11 @@ public:
     [[nodiscard]] CongestionSnapshot GetSnapshot() const;
     [[nodiscard]] bool IsTraceActive() const noexcept { return traceActive_.load(std::memory_order_acquire); }
 
+    // Worst single DPC duration (us) seen on any CPU in the last evaluation window.
+    // Lock-free and allocation-free (GetSnapshot() copies a vector under a mutex),
+    // so it is safe to poll every frame.
+    [[nodiscard]] double WorstDpcMicros() const noexcept { return worstDpcMicros_.load(std::memory_order_relaxed); }
+
     // إتاحة HandleEvent لقراءتها من قِبل الـ EventRecordCallback الخاص بـ ETW
     void HandleEvent(const EVENT_RECORD& record) noexcept;
 
@@ -134,6 +139,7 @@ private:
 
     std::atomic<std::uint64_t> rejectedEvents_{0};
     std::atomic<bool> traceActive_{false};
+    std::atomic<double> worstDpcMicros_{0.0};
 
     std::vector<PrevCounters> previous_;
     std::vector<char> hot_;

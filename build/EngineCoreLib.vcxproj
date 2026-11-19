@@ -307,6 +307,7 @@ if %errorlevel% neq 0 goto :VCEnd</Command>
     <ClCompile Include="C:\Users\Anotech\Desktop\THE SYSTEM\src\shader\vault_purging.cpp" />
     <ClCompile Include="C:\Users\Anotech\Desktop\THE SYSTEM\src\telemetry\vram_monitor.cpp" />
     <ClCompile Include="C:\Users\Anotech\Desktop\THE SYSTEM\src\network\pso_cloud_network.cpp" />
+    <ClCompile Include="C:\Users\Anotech\Desktop\THE SYSTEM\src\core\adaptive_profile.cpp" />
   </ItemGroup>
   <ItemGroup />
   <ItemGroup>

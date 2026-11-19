@@ -12,6 +12,7 @@
 #include <algorithm>
 #include <chrono>
 #include <cmath>
+#include <cstring>
 #include <numeric>
 #include <system_error>
 
@@ -50,7 +51,11 @@ public:
         pProperties->Wnode.Flags = WNODE_FLAG_TRACED_GUID;
         pProperties->Wnode.ClientContext = 1; // QPC Clock Resolution
         pProperties->BufferSize = bufferSizeKb_;
-        pProperties->LogFileMode = EVENT_TRACE_REAL_TIME_MODE;
+        // A custom-named session only receives kernel DPC/ISR events when it is a
+        // "system logger" session (Windows 8+). Without EVENT_TRACE_SYSTEM_LOGGER_MODE
+        // EnableFlags is ignored for a non-"NT Kernel Logger" name, the trace starts
+        // fine and then delivers nothing - which is why the DPC plot always read 0.
+        pProperties->LogFileMode = EVENT_TRACE_REAL_TIME_MODE | EVENT_TRACE_SYSTEM_LOGGER_MODE;
         pProperties->EnableFlags = EVENT_TRACE_FLAG_DPC | EVENT_TRACE_FLAG_INTERRUPT;
         pProperties->LoggerNameOffset = sizeof(EVENT_TRACE_PROPERTIES);
 
@@ -261,7 +266,13 @@ CongestionSnapshot DpcSteeringEngine::GetSnapshot() const
 
 void DpcSteeringEngine::HandleEvent(const EVENT_RECORD& record) noexcept
 {
-    // ETW Event ID Parsing for DPC (68) and ISR (67)
+    // PerfInfo kernel events: ThreadedDPC=66, ISR=67, DPC=68, TimerDPC=69.
+    // Payload starts with InitialTime (QPC ticks when the routine began); the
+    // event itself is stamped when the routine ENDS, so
+    //     duration = EventHeader.TimeStamp - InitialTime.
+    // (The old code read the first 8 payload bytes as the duration itself; that
+    // value is an absolute timestamp, always > maxSaneEventTicks_, so every
+    // event was rejected.)
     const UCHAR opcode = record.EventHeader.EventDescriptor.Opcode;
     const std::uint32_t cpuIndex = record.BufferContext.ProcessorIndex;
 
@@ -274,15 +285,18 @@ void DpcSteeringEngine::HandleEvent(const EVENT_RECORD& record) noexcept
     // Process duration payloads if event payload is large enough
     if (record.UserDataLength >= sizeof(std::uint64_t))
     {
-        std::uint64_t durationTicks = *reinterpret_cast<const std::uint64_t*>(record.UserData);
-        if (durationTicks > maxSaneEventTicks_)
+        std::uint64_t initialTicks = 0;
+        std::memcpy(&initialTicks, record.UserData, sizeof(initialTicks)); // unaligned-safe
+        const auto endTicks = static_cast<std::uint64_t>(record.EventHeader.TimeStamp.QuadPart);
+        if (endTicks <= initialTicks || (endTicks - initialTicks) > maxSaneEventTicks_)
         {
             rejectedEvents_.fetch_add(1, std::memory_order_relaxed);
             return;
         }
+        const std::uint64_t durationTicks = endTicks - initialTicks;
 
         auto& targetCore = counters_[cpuIndex];
-        if (opcode == 68) // DPC Routine execution
+        if (opcode == 66 || opcode == 68 || opcode == 69) // (Threaded/Timer) DPC routine execution
         {
             targetCore.dpcTicks.fetch_add(durationTicks, std::memory_order_relaxed);
             targetCore.dpcCount.fetch_add(1, std::memory_order_relaxed);
@@ -395,8 +409,12 @@ void DpcSteeringEngine::EvaluateAndSteer()
     }
 
     {
+        double worstUs = 0.0;
+        for (const auto& c : newSnapshot.cores) worstUs = std::max(worstUs, c.maxDpcMicros);
+        worstDpcMicros_.store(worstUs, std::memory_order_relaxed); // lock-free readout for the UI/orchestrator
+
         std::lock_guard lock(snapshotMutex_);
-        snapshot_ = newSnapshot;
+        snapshot_ = newSnapshot; // copy: ApplySteering() below still reads newSnapshot
     }
 
     ApplySteering(newSnapshot);

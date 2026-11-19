@@ -505,6 +505,10 @@ private:
                 data.source = PresentSource::Dxgi;
                 ring_.Push(data);
 
+                // FPS = START-to-START cadence. (It used to be fed the Start->Stop
+                // duration of the Present() call, which read ~3000 FPS at 60 Hz.)
+                if (prevStart != 0 && ts > prevStart) estimator_.OnSample(QpcDeltaToMs(prevStart, ts));
+
                 if (config_.hintSink) {
                     config_.hintSink->OnPresentTelemetry(data);
                     hintSinkInvocations_.fetch_add(1, std::memory_order_relaxed);
@@ -526,8 +530,6 @@ private:
                 data.kind = PresentEventKind::PresentStop;
                 data.source = PresentSource::Dxgi;
                 ring_.Push(data);
-
-                if (start != 0 && ts > start) estimator_.OnSample(QpcDeltaToMs(start, ts));
 
                 if (config_.hintSink) {
                     config_.hintSink->OnPresentTelemetry(data);

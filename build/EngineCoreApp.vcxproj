@@ -124,8 +124,9 @@
     <Link>
       <AdditionalDependencies>Debug\EngineCoreLib.lib;d3d12.lib;dxgi.lib;dxguid.lib;winhttp.lib;bcrypt.lib;advapi32.lib;kernel32.lib;user32.lib;gdi32.lib;winspool.lib;shell32.lib;ole32.lib;oleaut32.lib;uuid.lib;comdlg32.lib;advapi32.lib</AdditionalDependencies>
       <AdditionalLibraryDirectories>%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
-      <AdditionalOptions>%(AdditionalOptions) /machine:x64</AdditionalOptions>
+      <AdditionalOptions>%(AdditionalOptions) /machine:x64 /MANIFEST:EMBED "/MANIFESTINPUT:C:/Users/Anotech/Desktop/THE SYSTEM/EngineCoreApp.manifest"</AdditionalOptions>
       <DataExecutionPrevention></DataExecutionPrevention>
+      <EnableUAC>false</EnableUAC>
       <GenerateDebugInformation>true</GenerateDebugInformation>
       <IgnoreSpecificDefaultLibraries>%(IgnoreSpecificDefaultLibraries)</IgnoreSpecificDefaultLibraries>
       <ImageHasSafeExceptionHandlers></ImageHasSafeExceptionHandlers>
@@ -180,8 +181,9 @@
     <Link>
       <AdditionalDependencies>Release\EngineCoreLib.lib;d3d12.lib;dxgi.lib;dxguid.lib;winhttp.lib;bcrypt.lib;advapi32.lib;kernel32.lib;user32.lib;gdi32.lib;winspool.lib;shell32.lib;ole32.lib;oleaut32.lib;uuid.lib;comdlg32.lib;advapi32.lib</AdditionalDependencies>
       <AdditionalLibraryDirectories>%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
-      <AdditionalOptions>%(AdditionalOptions) /machine:x64</AdditionalOptions>
+      <AdditionalOptions>%(AdditionalOptions) /machine:x64 /MANIFEST:EMBED "/MANIFESTINPUT:C:/Users/Anotech/Desktop/THE SYSTEM/EngineCoreApp.manifest"</AdditionalOptions>
       <DataExecutionPrevention></DataExecutionPrevention>
+      <EnableUAC>false</EnableUAC>
       <GenerateDebugInformation>false</GenerateDebugInformation>
       <IgnoreSpecificDefaultLibraries>%(IgnoreSpecificDefaultLibraries)</IgnoreSpecificDefaultLibraries>
       <ImageHasSafeExceptionHandlers></ImageHasSafeExceptionHandlers>
@@ -236,8 +238,9 @@
     <Link>
       <AdditionalDependencies>MinSizeRel\EngineCoreLib.lib;d3d12.lib;dxgi.lib;dxguid.lib;winhttp.lib;bcrypt.lib;advapi32.lib;kernel32.lib;user32.lib;gdi32.lib;winspool.lib;shell32.lib;ole32.lib;oleaut32.lib;uuid.lib;comdlg32.lib;advapi32.lib</AdditionalDependencies>
       <AdditionalLibraryDirectories>%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
-      <AdditionalOptions>%(AdditionalOptions) /machine:x64</AdditionalOptions>
+      <AdditionalOptions>%(AdditionalOptions) /machine:x64 /MANIFEST:EMBED "/MANIFESTINPUT:C:/Users/Anotech/Desktop/THE SYSTEM/EngineCoreApp.manifest"</AdditionalOptions>
       <DataExecutionPrevention></DataExecutionPrevention>
+      <EnableUAC>false</EnableUAC>
       <GenerateDebugInformation>false</GenerateDebugInformation>
       <IgnoreSpecificDefaultLibraries>%(IgnoreSpecificDefaultLibraries)</IgnoreSpecificDefaultLibraries>
       <ImageHasSafeExceptionHandlers></ImageHasSafeExceptionHandlers>
@@ -291,8 +294,9 @@
     <Link>
       <AdditionalDependencies>RelWithDebInfo\EngineCoreLib.lib;d3d12.lib;dxgi.lib;dxguid.lib;winhttp.lib;bcrypt.lib;advapi32.lib;kernel32.lib;user32.lib;gdi32.lib;winspool.lib;shell32.lib;ole32.lib;oleaut32.lib;uuid.lib;comdlg32.lib;advapi32.lib</AdditionalDependencies>
       <AdditionalLibraryDirectories>%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
-      <AdditionalOptions>%(AdditionalOptions) /machine:x64</AdditionalOptions>
+      <AdditionalOptions>%(AdditionalOptions) /machine:x64 /MANIFEST:EMBED "/MANIFESTINPUT:C:/Users/Anotech/Desktop/THE SYSTEM/EngineCoreApp.manifest"</AdditionalOptions>
       <DataExecutionPrevention></DataExecutionPrevention>
+      <EnableUAC>false</EnableUAC>
       <GenerateDebugInformation>true</GenerateDebugInformation>
       <IgnoreSpecificDefaultLibraries>%(IgnoreSpecificDefaultLibraries)</IgnoreSpecificDefaultLibraries>
       <ImageHasSafeExceptionHandlers></ImageHasSafeExceptionHandlers>
@@ -365,6 +369,7 @@ if %errorlevel% neq 0 goto :VCEnd</Command>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="C:\Users\Anotech\Desktop\THE SYSTEM\src\main.cpp" />
+    <ResourceCompile Include="C:\Users\Anotech\Desktop\THE SYSTEM\EngineCoreApp.rc" />
     <ClCompile Include="C:\Users\Anotech\Desktop\THE SYSTEM\imgui\imgui.cpp" />
     <ClCompile Include="C:\Users\Anotech\Desktop\THE SYSTEM\imgui\imgui_draw.cpp" />
     <ClCompile Include="C:\Users\Anotech\Desktop\THE SYSTEM\imgui\imgui_widgets.cpp" />
